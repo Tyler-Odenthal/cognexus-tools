@@ -71,7 +71,7 @@ from cognexus.prompt_injection import (
     load_prompt_injection_config,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.1.3"
 
 __all__ = [
     # Version

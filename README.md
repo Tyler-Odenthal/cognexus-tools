@@ -14,7 +14,7 @@ pip install cognexus
 
 | Layer | What it does |
 |---|---|
-| **Static prompt defence** | Grades system prompts A–F against 12 OWASP LLM Top-10 attack vectors before deployment |
+| **Static prompt defence** | Grades system prompts A–F against 13 OWASP LLM Top-10 attack vectors before deployment |
 | **Runtime injection detection** | Screens user input, RAG content, and tabular payloads at request time |
 | **Audit events** | Append-only JSONL trail for every detected injection — no raw text stored |
 
@@ -31,6 +31,7 @@ pip install cognexus
 - Markup injection (XSS gadgets in model-visible text)
 - Zero-width / token-smuggling unicode attacks
 - Credential exfiltration requests
+- Unsolicited destructive database operations (DROP / DELETE / TRUNCATE / volume-wipe) — PD-13
 
 ---
 

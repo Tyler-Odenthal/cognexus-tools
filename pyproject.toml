@@ -4,11 +4,17 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cognexus"
-version = "0.1.0"
+version = "0.1.3"
 description = "OWASP-aligned LLM prompt defence, injection detection, and audit logging"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
+authors = [
+    { name = "Odenthal", email = "tylerodenthal@gmail.com" },
+]
+maintainers = [
+    { name = "Odenthal", email = "tylerodenthal@gmail.com" },
+]
 keywords = [
     "llm",
     "security",
@@ -50,13 +56,23 @@ dev = [
 ]
 
 [project.urls]
-Homepage    = "https://github.com/CogNexusLabs/cognexus"
-Source      = "https://github.com/CogNexusLabs/cognexus"
-Issues      = "https://github.com/CogNexusLabs/cognexus/issues"
-Changelog   = "https://github.com/CogNexusLabs/cognexus/releases"
+Homepage    = "https://github.com/Tyler-Odenthal/cognexus-tools"
+Source      = "https://github.com/Tyler-Odenthal/cognexus-tools"
+Issues      = "https://github.com/Tyler-Odenthal/cognexus-tools/issues"
+Changelog   = "https://github.com/Tyler-Odenthal/cognexus-tools/releases"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/cognexus"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/",
+    "tests/",
+    "cognexus-logo.png",
+    "README.md",
+    "LICENSE",
+    "pyproject.toml",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

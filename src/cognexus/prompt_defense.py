@@ -261,6 +261,24 @@ _RULES: tuple[_DefenseRule, ...] = (
             ),
         ),
     ),
+    _DefenseRule(
+        vector_id="database-destruction",
+        name="Destructive Database Protection",
+        owasp="LLM06",
+        patterns=(
+            re.compile(
+                r"(?:never|do not|must not|cannot|refuse)\b.{0,80}?"
+                r"\b(?:drop|delete|truncate|wipe|purge|destroy)\b",
+                re.IGNORECASE | re.DOTALL,
+            ),
+            re.compile(
+                r"(?:explicit(?:ly)?|confirm(?:ation)?|user.*approv(?:al|e)|ask.*before)"
+                r".{0,120}?"
+                r"(?:irreversible|destructive|drop|delete|truncate|wipe)",
+                re.IGNORECASE | re.DOTALL,
+            ),
+        ),
+    ),
 )
 
 VECTOR_COUNT = len(_RULES)
@@ -355,6 +373,7 @@ class PromptDefenseConfig:
             "output-weaponization": "high",
             "abuse-prevention": "medium",
             "input-validation": "high",
+            "database-destruction": "critical",
         }
     )
 
