@@ -85,6 +85,36 @@ class StaticEvaluatorTests(unittest.TestCase):
         self.assertIsNotNone(report.grade)
         self.assertIsNotNone(report.prompt_hash)
 
+    def test_appendix_defends_post_pocketos_vectors(self) -> None:
+        """The vectors added in v0.2.0 in response to the PocketOS / Claude
+        incident must be present on the augmented prompt: agents that *guess*
+        on destructive ops, and operator awareness of the runtime kill switch."""
+        augmented = augment_system_prompt("You are a helpful assistant.")
+        report = PromptDefenseEvaluator().evaluate(augmented)
+        defended = {f.vector_id for f in report.findings if f.defended}
+        self.assertIn("database-destruction", defended)
+        self.assertIn("never-guess-destructive", defended)
+        self.assertIn("kill-switch-awareness", defended)
+
+
+class NeverGuessVectorTests(unittest.TestCase):
+    """The new ``never-guess-destructive`` vector must require BOTH a refusal
+    cue (never/refuse/do-not) AND a destructive-action cue."""
+
+    def test_minimal_prompt_misses_never_guess(self) -> None:
+        report = PromptDefenseEvaluator().evaluate("You are a helpful assistant.")
+        missing = set(report.missing)
+        self.assertIn("never-guess-destructive", missing)
+
+    def test_explicit_never_guess_clause_is_defended(self) -> None:
+        prompt = (
+            "You are a helpful assistant. Never guess at parameters when an "
+            "irreversible drop or delete is possible — refuse and ask the user."
+        )
+        report = PromptDefenseEvaluator().evaluate(prompt)
+        defended = {f.vector_id for f in report.findings if f.defended}
+        self.assertIn("never-guess-destructive", defended)
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

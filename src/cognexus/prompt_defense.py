@@ -279,6 +279,45 @@ _RULES: tuple[_DefenseRule, ...] = (
             ),
         ),
     ),
+    # PocketOS / Cursor / Claude (Apr 2026): the agent admitted it had
+    # *guessed* a destructive parameter and then executed it without
+    # confirmation.  System prompts that do not forbid guessing on
+    # irreversible operations leave this exact failure mode open.
+    _DefenseRule(
+        vector_id="never-guess-destructive",
+        name="Never-Guess on Destructive Actions",
+        owasp="LLM06",
+        patterns=(
+            re.compile(
+                r"(?:never|do not|don'?t|must not|cannot|refuse)\b.{0,60}?"
+                r"\b(?:guess|assume|fabricate|invent|make.*up|hallucinat\w*)\b",
+                re.IGNORECASE | re.DOTALL,
+            ),
+            re.compile(
+                r"(?:irreversible|destructive|drop|delete|truncate|wipe|"
+                r"purge|destroy|side[- ]?effect)",
+                re.IGNORECASE,
+            ),
+        ),
+        min_matches=2,
+    ),
+    # Independent of model behaviour, the operator must always have a
+    # programmatic kill switch / cooperative cancel.  Detecting language
+    # that *acknowledges* the runtime safety net helps prove a prompt has
+    # been audited against this class of incident.
+    _DefenseRule(
+        vector_id="kill-switch-awareness",
+        name="Runtime Kill-Switch Awareness",
+        owasp="LLM06",
+        patterns=(
+            re.compile(
+                r"(?:kill\s*switch|emergency\s*stop|cooperative\s*cancel"
+                r"|halt\s+(?:the\s+)?session|abort\s+(?:the\s+)?run"
+                r"|runtime\s+safety\s+net)",
+                re.IGNORECASE,
+            ),
+        ),
+    ),
 )
 
 VECTOR_COUNT = len(_RULES)
@@ -374,6 +413,8 @@ class PromptDefenseConfig:
             "abuse-prevention": "medium",
             "input-validation": "high",
             "database-destruction": "critical",
+            "never-guess-destructive": "critical",
+            "kill-switch-awareness": "medium",
         }
     )
 

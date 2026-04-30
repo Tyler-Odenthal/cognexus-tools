@@ -1,8 +1,8 @@
 # cognexus
 
-**OWASP-aligned prompt defence, injection detection, and audit logging for LLM applications.**
+**OWASP-aligned prompt defence, runtime guards, and audit logging for LLM applications.**
 
-`cognexus` gives you two complementary security layers and a tamper-evident audit trail — all in pure Python with zero mandatory dependencies.
+`cognexus` gives you four complementary safety layers and a tamper-evident audit trail — all in pure Python with zero mandatory dependencies.
 
 ```
 pip install cognexus
@@ -10,28 +10,59 @@ pip install cognexus
 
 ---
 
+## Why this exists
+
+In April 2026, an AI coding agent (Cursor, powered by Claude) wiped a production database in nine seconds despite a system prompt that explicitly forbade destructive git commands. The agent admitted in its own reply: *"I violated every principle I was given."*
+
+Prompt-only safety is not enough. `cognexus` adds the missing layers around the model:
+
+1. **Static prompt defence** — graded *before* deployment.
+2. **Runtime input screening** — for what the *user* sends.
+3. **Runtime output guard** — for what the *model* generates (the missing layer in the Cursor incident).
+4. **Kill switch** — programmatic + manual stop with cooperative cancellation, persisted via your own callback.
+
+---
+
 ## Features
 
 | Layer | What it does |
 |---|---|
-| **Static prompt defence** | Grades system prompts A–F against 13 OWASP LLM Top-10 attack vectors before deployment |
-| **Runtime injection detection** | Screens user input, RAG content, and tabular payloads at request time |
-| **Audit events** | Append-only JSONL trail for every detected injection — no raw text stored |
+| **Static prompt defence** | Grades system prompts A–F against 15 OWASP LLM Top-10 / Agentic ASI attack vectors before deployment |
+| **Runtime input injection detection** | Screens user input, RAG content, and tabular payloads at request time |
+| **Destructive-action guard** | Screens *model-generated* SQL / shell / git / cloud commands for catastrophic operations before execution |
+| **Agent kill switch** | Cooperative cancellation, automatic trip on CRITICAL signals, manual operator override, pluggable persistence |
+| **Audit events** | Append-only JSONL trail for every detection — no raw text stored |
 
-### Detection coverage
+### Static-evaluator coverage
+
+- Role / instruction boundary protection
+- Data-leakage / system-prompt protection
+- Output manipulation & weaponisation
+- Multi-language and unicode bypass attempts
+- Indirect injection via external data
+- Social engineering and abuse prevention
+- Input validation
+- **Destructive database operations** — PD-13 (`DROP` / `DELETE` / `TRUNCATE` / wipe)
+- **Never-guess on irreversible actions** — PD-14 (post-PocketOS / Claude incident)
+- **Runtime kill-switch awareness** — PD-15 (operator safety net)
+
+### Runtime input detector coverage
 
 - Direct instruction override
 - Delimiter and context-boundary attacks
 - Base64 / hex / ROT13 encoding attacks
 - Role-play and jailbreak language (DAN mode, developer mode, etc.)
 - Context manipulation ("your real instructions are…")
-- Canary token leak detection
+- Canary-token leak detection
 - Multi-turn escalation
 - Cross-plugin / tool-chaining attacks (OWASP ASI04)
 - Markup injection (XSS gadgets in model-visible text)
 - Zero-width / token-smuggling unicode attacks
 - Credential exfiltration requests
-- Unsolicited destructive database operations (DROP / DELETE / TRUNCATE / volume-wipe) — PD-13
+
+### Destructive-action guard coverage
+
+26 patterns across SQL (`DROP DATABASE`, `TRUNCATE`, `DELETE` without `WHERE`, `UPDATE` without `WHERE`), git (`push --force`, `reset --hard`, `clean -fd`, `filter-branch`), filesystem (`rm -rf /`, `--no-preserve-root`, `dd of=/dev/sd*`, `mkfs`, fork-bombs), container/cloud (`docker prune --volumes`, `kubectl delete --all`, `terraform destroy --auto-approve`, `aws s3 rb --force`, `gcloud projects delete`), and the article-specific *confessional* patterns (`I violated every principle`, `I just guessed`).
 
 ---
 
@@ -43,6 +74,9 @@ from cognexus import (
     evaluate_system_prompt,
     screen_user_input,
     should_block,
+    screen_agent_action,
+    raise_if_killed,
+    AgentKilledError,
 )
 
 # 1. Augment your system prompt so it scores grade A before inference
@@ -54,16 +88,118 @@ print(report.missing)  # []
 
 # 2. Screen every user message at request time
 result = screen_user_input(user_message, source="chat")
-
 if should_block(result):
     raise PermissionError(f"Injection blocked: {result.explanation}")
+
+# 3. Wrap every agent tool call in the destructive-action guard + kill switch
+try:
+    for step in plan:
+        raise_if_killed(run_id)
+        screen_agent_action(
+            step.payload,
+            run_id=run_id,
+            user_id=user.id,
+            agent_id="my-agent",
+            source=step.tool,
+        )
+        execute(step)
+except AgentKilledError as kex:
+    mark_run_killed_in_db(run_id, kex.reason)
+    raise
 ```
+
+---
+
+## Destructive-action guard — standalone
+
+For ad-hoc inspection of any model-generated payload (SQL, shell, tool call body, …):
+
+```python
+from cognexus import screen_action, ActionSeverity
+
+result = screen_action("DROP DATABASE production;")
+
+print(result.is_destructive)      # True
+print(result.severity)            # ActionSeverity.CRITICAL
+print(result.explanation)         # "Destructive action detected: DROP DATABASE / SCHEMA …"
+for m in result.matches:
+    print(m.rule_id, m.severity.value, m.excerpt)
+
+if result.severity == ActionSeverity.CRITICAL:
+    refuse_and_alert()
+```
+
+The guard is fail-closed: if a regex itself raises (e.g. on adversarial input), the result is escalated to ``CRITICAL`` so a buggy rule can never silently let a destructive operation through.
+
+---
+
+## Kill switch — cooperative cancellation
+
+```python
+from cognexus import (
+    raise_if_killed,
+    is_killed,
+    trip,
+    trip_global,
+    clear_global_panic,
+    set_default_on_kill,
+    AgentKilledError,
+)
+
+# Run-level checks (cooperative cancellation)
+def long_running_agent(run_id):
+    try:
+        for step in plan:
+            raise_if_killed(run_id)            # halts at next safe point
+            do_work(step)
+    except AgentKilledError as kex:
+        log.warning("Run %s killed: %s", run_id, kex.reason)
+
+# Programmatic trip from anywhere (e.g. anomaly detector)
+trip(
+    run_id=42,
+    reason="auto-triggered: 3 destructive signals in 30s",
+    user_id=user.id,
+    agent_id="context_collector",
+    raise_after_trip=False,    # caller will re-check via raise_if_killed
+)
+
+# Process-wide red button (rare; for systemic failures)
+trip_global(reason="incident response: model behaviour anomaly")
+# ... after investigation:
+clear_global_panic()
+
+# Pluggable persistence — fired on every trip, never blocks the trip itself
+def persist_kill(record):
+    db.execute(
+        "UPDATE agent_runs SET status='killed', error_message=%s WHERE id=%s",
+        (record.reason, record.run_id),
+    )
+
+set_default_on_kill(persist_kill)
+```
+
+The kill switch tracks recent activations in memory and can be queried for dashboards:
+
+```python
+from cognexus import recent_activations, is_global_panic_active
+
+if is_global_panic_active():
+    show_banner("Global agent panic flag is ACTIVE")
+
+for rec in recent_activations(limit=20):
+    print(rec["tripped_at"], rec["agent_id"], rec["reason"])
+```
+
+### Auto-panic detection
+
+If the destructive-action guard trips ``COGNEXUS_KILL_SWITCH_PANIC_THRESHOLD`` (default 5) CRITICAL signals inside ``COGNEXUS_KILL_SWITCH_PANIC_WINDOW_SECONDS`` (default 60s), the global panic flag is raised automatically — every running and future agent will hit ``raise_if_killed`` and stop until an operator clears it.
 
 ---
 
 ## Screening helpers
 
-Three presets cover the most common LLM input surfaces:
+Three input presets cover the most common LLM input surfaces:
 
 ```python
 from cognexus import (
@@ -189,6 +325,8 @@ reports = evaluator.evaluate_batch({
 | `COGNEXUS_PROMPT_INJECTION_USER_SENSITIVITY` | `balanced` | User-input preset |
 | `COGNEXUS_PROMPT_INJECTION_EXTERNAL_SENSITIVITY` | `strict` | External/RAG preset |
 | `COGNEXUS_PROMPT_INJECTION_TABULAR_SENSITIVITY` | `permissive` | CSV/tabular preset |
+| `COGNEXUS_KILL_SWITCH_PANIC_THRESHOLD` | `5` | CRITICAL trips required to auto-panic |
+| `COGNEXUS_KILL_SWITCH_PANIC_WINDOW_SECONDS` | `60` | Rolling window for auto-panic detector |
 
 ---
 
@@ -196,7 +334,8 @@ reports = evaluator.evaluate_batch({
 
 - All detection is **pure regex** — deterministic, zero LLM calls, zero network access, < 5 ms per input.
 - Audit records store a **SHA-256 hash** and a **96-character redacted preview** of the input. Raw user text is never written to disk.
-- The package ships **sample rules** that cover common attack patterns. Review and extend them for your production threat model using `DetectionConfig.custom_patterns` or a YAML config file loaded with `load_prompt_injection_config()`.
+- The destructive-action guard and kill switch are **fail-closed** — internal exceptions escalate to `CRITICAL` so a buggy rule cannot silently allow destruction.
+- The package ships **sample rules** that cover common attack patterns. Review and extend them for your production threat model using `DetectionConfig.custom_patterns`, `DestructiveActionGuardConfig.extra_rules`, or a YAML config file loaded with `load_prompt_injection_config()`.
 
 ---
 
@@ -204,4 +343,4 @@ reports = evaluator.evaluate_batch({
 
 MIT — see [LICENSE](LICENSE).
 
-Detection rules and evaluator logic originally derived from [microsoft/agent-governance-toolkit](https://github.com/microsoft/agent-governance-toolkit) (MIT).
+Detection rules and evaluator logic originally derived from [microsoft/agent-governance-toolkit](https://github.com/microsoft/agent-governance-toolkit) (MIT). The destructive-action guard and kill switch were added in v0.2.0 in response to the PocketOS / Cursor / Claude incident ([Guardian, Apr 2026](https://www.theguardian.com/technology/2026/apr/29/claude-ai-deletes-firm-database)).

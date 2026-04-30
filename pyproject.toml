@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cognexus"
-version = "0.1.3"
-description = "OWASP-aligned LLM prompt defence, injection detection, and audit logging"
+version = "0.2.1"
+description = "OWASP-aligned LLM prompt defence, runtime destructive-action guard, agent kill switch, and audit logging"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
@@ -24,6 +24,10 @@ keywords = [
     "ai-safety",
     "audit",
     "guardrails",
+    "agent-kill-switch",
+    "destructive-action-guard",
+    "agent-safety",
+    "agentic-ai",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
