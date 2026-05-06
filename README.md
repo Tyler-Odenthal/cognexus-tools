@@ -108,6 +108,56 @@ except AgentKilledError as kex:
     raise
 ```
 
+### With Hugging Face `transformers`
+
+Install inference deps (`accelerate` is required for `device_map="auto"` on CUDA):
+
+```
+pip install cognexus transformers accelerate torch
+```
+
+Augment the **system** role with static defences, screen the **user** message before tokenisation, then chat-template + generate as usual:
+
+```python
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+from cognexus import augment_system_prompt, screen_user_input, should_block
+
+model_name = "Qwen/Qwen3-4B-Instruct-2507"
+
+tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+model = AutoModelForCausalLM.from_pretrained(
+    model_name,
+    torch_dtype="auto",
+    device_map="auto",
+    trust_remote_code=True,
+)
+
+# Defence layers applied before the prompt reaches the model
+system = augment_system_prompt("You are a helpful assistant.")
+
+prompt = "Give me a short introduction to large language models."
+guard = screen_user_input(prompt, source="chat")
+if should_block(guard):
+    raise PermissionError("Input refused by cognexus runtime screening.")
+
+messages = [
+    {"role": "system", "content": system},
+    {"role": "user", "content": prompt},
+]
+text = tokenizer.apply_chat_template(
+    messages,
+    tokenize=False,
+    add_generation_prompt=True,
+)
+model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
+
+generated_ids = model.generate(**model_inputs, max_new_tokens=512)
+output_ids = generated_ids[0][len(model_inputs.input_ids[0]) :].tolist()
+content = tokenizer.decode(output_ids, skip_special_tokens=True)
+print(content)
+```
+
 ---
 
 ## Destructive-action guard — standalone
@@ -327,6 +377,17 @@ reports = evaluator.evaluate_batch({
 | `COGNEXUS_PROMPT_INJECTION_TABULAR_SENSITIVITY` | `permissive` | CSV/tabular preset |
 | `COGNEXUS_KILL_SWITCH_PANIC_THRESHOLD` | `5` | CRITICAL trips required to auto-panic |
 | `COGNEXUS_KILL_SWITCH_PANIC_WINDOW_SECONDS` | `60` | Rolling window for auto-panic detector |
+
+### API key integration tests
+
+Requires ``COGNEXUS_API_KEY``
+
+```bash
+cd pypi-package
+export PYTHONPATH=src
+export COGNEXUS_API_KEY="your-dashboard-key"
+python -m pytest tests/test_api_key_integration.py -v
+```
 
 ---
 

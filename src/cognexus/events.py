@@ -144,6 +144,31 @@ def record_prompt_defense_event(
         except Exception as exc:
             _log.debug("events: on_event callback raised: %s", exc)
 
+    try:
+        from cognexus.cloud import post_sdk_event
+
+        post_sdk_event(
+            "prompt_defense",
+            source="pypi_sdk",
+            level="warn",
+            title=f"Prompt defense: {kind}",
+            payload={
+                "kind": kind,
+                "surface": surface,
+                "component_source": source,
+                "action": action,
+                "threat": record.get("threat"),
+                "injection_type": record.get("injection_type"),
+                "confidence": record.get("confidence"),
+                "pattern_count": len(record.get("patterns") or []),
+                "input_sha256": record.get("input_sha256"),
+                "preview": record.get("preview"),
+                "user_id": user_id,
+            },
+        )
+    except Exception as exc:
+        _log.debug("events: cloud mirror skipped: %s", exc)
+
 
 def read_recent_events(
     *,

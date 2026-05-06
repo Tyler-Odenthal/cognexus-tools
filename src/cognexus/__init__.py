@@ -97,6 +97,7 @@ from cognexus.destructive_action_guard import (
     reset_guard,
     screen_action,
 )
+from cognexus.cloud import configure, post_sdk_event
 from cognexus.events import (
     read_recent_events,
     record_prompt_defense_event,
@@ -136,7 +137,7 @@ from cognexus.prompt_injection import (
     load_prompt_injection_config,
 )
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 __all__ = [
     # Version
@@ -179,6 +180,9 @@ __all__ = [
     # Audit events
     "record_prompt_defense_event",
     "read_recent_events",
+    # Cloud ingest (optional)
+    "configure",
+    "post_sdk_event",
     # Core data models — prompt defence
     "PromptDefenseEvaluator",
     "PromptDefenseReport",
