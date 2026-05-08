@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from cognexus import (
+    __version__,
     ActionSeverity,
     AgentKilledError,
     augment_system_prompt,
@@ -30,6 +31,17 @@ from cognexus import (
 
 _DEFAULT_BASE = "https://cognexuslabs.ai"
 _ENV_FILENAMES = (".env", ".env.local", ".env.development")
+
+# urllib's default User-Agent is ``Python-urllib/…``. Cloudflare may return HTTP 403
+# error 1010 (browser_signature_banned) for that fingerprint — use an explicit CLI UA.
+_CLI_USER_AGENT = (
+    f"cognexus-cli/{__version__} (+https://github.com/Tyler-Odenthal/cognexus-tools)"
+)
+
+
+def _dashboard_request_headers() -> dict[str, str]:
+    ua = (os.environ.get("COGNEXUS_CLI_USER_AGENT") or "").strip() or _CLI_USER_AGENT
+    return {"Accept": "application/json", "User-Agent": ua}
 
 
 def _effective_base_url() -> str:
@@ -111,7 +123,7 @@ def _http_json(
     timeout_sec: float = 30.0,
 ) -> tuple[int, Any]:
     data = None if body is None else json.dumps(body, ensure_ascii=False).encode("utf-8")
-    req_headers = {"Accept": "application/json", **(headers or {})}
+    req_headers = {**_dashboard_request_headers(), **(headers or {})}
     if body is not None:
         req_headers.setdefault("Content-Type", "application/json")
     req = urllib.request.Request(url, data=data, headers=req_headers, method=method)
@@ -146,6 +158,19 @@ def _format_api_error(payload: Any) -> str:
     return json.dumps(payload)
 
 
+def _append_cli_http_hint(message: str) -> str:
+    """Extra guidance when WAF/bot checks reject urllib's default client fingerprint."""
+    low = message.lower()
+    if "blocked" in low and "browser" in low:
+        return (
+            message
+            + "\n  Tip: Upgrade ``cognexus`` (this CLI sends a non-default User-Agent), "
+            "or create an API key in the dashboard and set COGNEXUS_API_KEY. "
+            "Override with COGNEXUS_CLI_USER_AGENT if your network still blocks the CLI."
+        )
+    return message
+
+
 def signup_or_login(base_url: str, email: str, password: str, display_name: str) -> str:
     """Return JWT from signup or login."""
     signup_url = f"{base_url.rstrip('/')}/api/auth/signup"
@@ -166,8 +191,13 @@ def signup_or_login(base_url: str, email: str, password: str, display_name: str)
         if status_l == 200 and isinstance(payload_l, dict) and payload_l.get("token"):
             print("An account with that email already exists — logged in.")
             return str(payload_l["token"])
-        raise SystemExit(f"Login failed: {_format_api_error(payload_l)}")
-    raise SystemExit(f"Could not sign up: {_format_api_error(payload)}")
+        raise SystemExit(
+            "Login failed: "
+            + _append_cli_http_hint(_format_api_error(payload_l))
+        )
+    raise SystemExit(
+        "Could not sign up: " + _append_cli_http_hint(_format_api_error(payload))
+    )
 
 
 def create_dashboard_api_key(base_url: str, jwt: str, label: str = "pypi cognexus quickstart") -> str:
@@ -181,7 +211,9 @@ def create_dashboard_api_key(base_url: str, jwt: str, label: str = "pypi cognexu
     )
     if status == 200 and isinstance(payload, dict) and payload.get("key"):
         return str(payload["key"])
-    raise SystemExit(f"Could not create API key: {_format_api_error(payload)}")
+    raise SystemExit(
+        "Could not create API key: " + _append_cli_http_hint(_format_api_error(payload))
+    )
 
 
 def prompt_for_credentials(base_url: str) -> str:

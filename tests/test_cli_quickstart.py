@@ -6,7 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from cognexus.cli import extract_cognexus_api_key_from_text, find_cognexus_api_key_in_env_files
+from cognexus import __version__
+from cognexus.cli import (
+    _CLI_USER_AGENT,
+    _dashboard_request_headers,
+    extract_cognexus_api_key_from_text,
+    find_cognexus_api_key_in_env_files,
+)
 
 
 @pytest.mark.parametrize(
@@ -32,3 +38,11 @@ def test_find_cognexus_api_key_in_env_files(tmp_path: Path, monkeypatch: pytest.
     key, path = find_cognexus_api_key_in_env_files()
     assert key == "file-key"
     assert path == (tmp_path / ".env").resolve()
+
+
+def test_browser_like_headers_match_dashboard_fetch() -> None:
+    h = _browser_like_headers("https://cognexuslabs.ai/api/auth/signup")
+    assert h["Origin"] == "https://cognexuslabs.ai"
+    assert h["Referer"] == "https://cognexuslabs.ai/"
+    assert h["Sec-Fetch-Site"] == "same-origin"
+    assert "Mozilla" in h["User-Agent"]
