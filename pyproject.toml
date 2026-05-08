@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cognexus"
-version = "0.2.4"
+version = "0.2.6"
 description = "OWASP-aligned LLM prompt defence, runtime destructive-action guard, agent kill switch, and audit logging"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -84,6 +84,8 @@ include = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts   = "-v"
+# Src layout — required when pytest is run without PYTHONPATH=src (e.g. build-pypi.sh).
+pythonpath = ["src"]
 
 [tool.ruff]
 line-length = 100
