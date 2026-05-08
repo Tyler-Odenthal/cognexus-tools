@@ -164,7 +164,7 @@ def _append_cli_http_hint(message: str) -> str:
     if "blocked" in low and "browser" in low:
         return (
             message
-            + "\n  Tip: Upgrade ``cognexus`` (this CLI sends a non-default User-Agent), "
+            + "\n  Tip: Upgrade the cognexus package (the CLI sends a non-default User-Agent), "
             "or create an API key in the dashboard and set COGNEXUS_API_KEY. "
             "Override with COGNEXUS_CLI_USER_AGENT if your network still blocks the CLI."
         )

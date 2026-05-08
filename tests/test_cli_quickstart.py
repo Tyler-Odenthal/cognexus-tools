@@ -40,9 +40,10 @@ def test_find_cognexus_api_key_in_env_files(tmp_path: Path, monkeypatch: pytest.
     assert path == (tmp_path / ".env").resolve()
 
 
-def test_browser_like_headers_match_dashboard_fetch() -> None:
-    h = _browser_like_headers("https://cognexuslabs.ai/api/auth/signup")
-    assert h["Origin"] == "https://cognexuslabs.ai"
-    assert h["Referer"] == "https://cognexuslabs.ai/"
-    assert h["Sec-Fetch-Site"] == "same-origin"
-    assert "Mozilla" in h["User-Agent"]
+def test_dashboard_request_headers_avoids_python_urllib_fingerprint() -> None:
+    assert _CLI_USER_AGENT.startswith(f"cognexus-cli/{__version__}")
+    assert "Python-urllib" not in _CLI_USER_AGENT
+    h = _dashboard_request_headers()
+    assert h["Accept"] == "application/json"
+    assert "Python-urllib" not in h["User-Agent"]
+    assert h["User-Agent"].startswith(f"cognexus-cli/{__version__}")
