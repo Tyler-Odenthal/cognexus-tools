@@ -8,6 +8,7 @@ import pytest
 
 from cognexus import __version__
 from cognexus.cli import (
+    _quickstart_demo_file_contents,
     _request_headers_for_url,
     extract_cognexus_api_key_from_text,
     find_cognexus_api_key_in_env_files,
@@ -50,3 +51,11 @@ def test_request_headers_match_dashboard_fetch(monkeypatch: pytest.MonkeyPatch) 
     assert "Chrome" in h["User-Agent"]
     assert "Python-urllib" not in h["User-Agent"]
     assert h["X-Cognexus-Client"] == f"cognexus-cli/{__version__}"
+
+
+def test_quickstart_demo_template_substitutes_metadata() -> None:
+    body = _quickstart_demo_file_contents("https://example.test")
+    assert "https://example.test" in body
+    assert __version__ in body
+    assert "Qwen/Qwen3-4B-Instruct-2507" in body
+    assert "run_guard_tests" in body

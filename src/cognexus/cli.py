@@ -11,6 +11,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Iterator
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,8 @@ from cognexus import (
 
 _DEFAULT_BASE = "https://cognexuslabs.ai"
 _ENV_FILENAMES = (".env", ".env.local", ".env.development")
+_QUICKSTART_DEMO_FILENAME = "cognexus_quickstart_demo.py"
+_QUICKSTART_TEMPLATE = "_quickstart_live_demo.py.tpl"
 
 # Cloudflare (and similar) may block ``Python-urllib/…`` or a non-browser TLS fingerprint
 # *before* requests reach FastAPI. This default mimics a desktop Chrome fetch; override
@@ -125,6 +128,21 @@ def find_cognexus_api_key_in_env_files(start: Path | None = None) -> tuple[str |
         if key:
             return key, path
     return None, None
+
+
+def _quickstart_demo_file_contents(base_url: str) -> str:
+    """Fill the embedded template with the origin used during quickstart."""
+    raw = resources.files("cognexus").joinpath(_QUICKSTART_TEMPLATE).read_text(encoding="utf-8")
+    return raw.replace("__COGNEXUS_QUICKSTART_BASE_URL__", base_url).replace(
+        "__COGNEXUS_PKG_VERSION__", __version__
+    )
+
+
+def _write_quickstart_demo_file(base_url: str) -> Path:
+    """Emit a runnable script next to the user's cwd."""
+    path = Path.cwd() / _QUICKSTART_DEMO_FILENAME
+    path.write_text(_quickstart_demo_file_contents(base_url), encoding="utf-8")
+    return path
 
 
 def resolve_api_key_for_quickstart() -> tuple[str | None, Path | None]:
@@ -370,13 +388,23 @@ def run_quickstart_demo(api_key: str, *, base_url: str) -> None:
         "If COGNEXUS_API_BASE_URL points elsewhere, events go to that origin."
     )
 
+    header("6. Your live demo script")
+    demo_path = _write_quickstart_demo_file(base_url)
+    print(f"Created {demo_path.resolve()}")
+    print(
+        "  • Guardrail assertions + optional Qwen3-4B inference (same flows as this tour).\n"
+        "  • Install deps for local GPU/CPU generation:\n"
+        "      pip install torch transformers accelerate\n"
+        "  • Run:\n"
+        f"      python {_QUICKSTART_DEMO_FILENAME}"
+    )
+
     header("Next steps")
     print(
-        "• Import the same helpers in your app: augment_system_prompt, screen_user_input,\n"
+        "• Run the generated script above to exercise cognexus with a real small LM.\n"
+        "• Import the helpers in your own app: augment_system_prompt, screen_user_input,\n"
         "  screen_action, screen_agent_action, raise_if_killed, post_sdk_event.\n"
-        "• See https://github.com/Tyler-Odenthal/cognexus-tools for examples and releases.\n"
-        "• Optional: install torch + transformers and run local inference with screening,\n"
-        "  as in the repository's test_cognexus.py script."
+        "• See https://github.com/Tyler-Odenthal/cognexus-tools for examples and releases."
     )
     print()
 
