@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cognexus"
-version = "0.2.3"
+version = "0.2.4"
 description = "OWASP-aligned LLM prompt defence, runtime destructive-action guard, agent kill switch, and audit logging"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -45,6 +45,9 @@ classifiers = [
 
 # Zero mandatory runtime dependencies — pure stdlib.
 dependencies = []
+
+[project.scripts]
+cognexus = "cognexus.cli:main"
 
 [project.optional-dependencies]
 # Required only if you load custom detection patterns from YAML files via
