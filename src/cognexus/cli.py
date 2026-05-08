@@ -8,15 +8,16 @@ import json
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 from cognexus import (
-    __version__,
     ActionSeverity,
     AgentKilledError,
+    __version__,
     augment_system_prompt,
     clear_run,
     configure,
@@ -32,16 +33,36 @@ from cognexus import (
 _DEFAULT_BASE = "https://cognexuslabs.ai"
 _ENV_FILENAMES = (".env", ".env.local", ".env.development")
 
-# urllib's default User-Agent is ``Python-urllib/…``. Cloudflare may return HTTP 403
-# error 1010 (browser_signature_banned) for that fingerprint — use an explicit CLI UA.
-_CLI_USER_AGENT = (
-    f"cognexus-cli/{__version__} (+https://github.com/Tyler-Odenthal/cognexus-tools)"
+# Cloudflare (and similar) may block ``Python-urllib/…`` or a non-browser TLS fingerprint
+# *before* requests reach FastAPI. This default mimics a desktop Chrome fetch; override
+# with COGNEXUS_CLI_USER_AGENT if your edge still challenges the client.
+_DEFAULT_BROWSER_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 )
 
 
-def _dashboard_request_headers() -> dict[str, str]:
-    ua = (os.environ.get("COGNEXUS_CLI_USER_AGENT") or "").strip() or _CLI_USER_AGENT
-    return {"Accept": "application/json", "User-Agent": ua}
+def _request_headers_for_url(url: str) -> dict[str, str]:
+    """Headers that match same-origin browser ``fetch`` to the dashboard API (WAF-friendly)."""
+    ua = (os.environ.get("COGNEXUS_CLI_USER_AGENT") or "").strip() or _DEFAULT_BROWSER_UA
+    parts = urllib.parse.urlsplit(url)
+    origin = (
+        f"{parts.scheme}://{parts.netloc}" if parts.scheme and parts.netloc else ""
+    )
+    referer = (origin.rstrip("/") + "/") if origin else ""
+    h: dict[str, str] = {
+        "User-Agent": ua,
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "X-Cognexus-Client": f"cognexus-cli/{__version__}",
+    }
+    if origin:
+        h["Origin"] = origin
+        h["Referer"] = referer
+        h["Sec-Fetch-Dest"] = "empty"
+        h["Sec-Fetch-Mode"] = "cors"
+        h["Sec-Fetch-Site"] = "same-origin"
+    return h
 
 
 def _effective_base_url() -> str:
@@ -123,7 +144,7 @@ def _http_json(
     timeout_sec: float = 30.0,
 ) -> tuple[int, Any]:
     data = None if body is None else json.dumps(body, ensure_ascii=False).encode("utf-8")
-    req_headers = {**_dashboard_request_headers(), **(headers or {})}
+    req_headers = {**_request_headers_for_url(url), **(headers or {})}
     if body is not None:
         req_headers.setdefault("Content-Type", "application/json")
     req = urllib.request.Request(url, data=data, headers=req_headers, method=method)
@@ -159,14 +180,16 @@ def _format_api_error(payload: Any) -> str:
 
 
 def _append_cli_http_hint(message: str) -> str:
-    """Extra guidance when WAF/bot checks reject urllib's default client fingerprint."""
+    """Extra guidance when the edge (e.g. Cloudflare) blocks the client before the API."""
     low = message.lower()
     if "blocked" in low and "browser" in low:
         return (
             message
-            + "\n  Tip: Upgrade the cognexus package (the CLI sends a non-default User-Agent), "
-            "or create an API key in the dashboard and set COGNEXUS_API_KEY. "
-            "Override with COGNEXUS_CLI_USER_AGENT if your network still blocks the CLI."
+            + "\n  This text is from the CDN/WAF (e.g. Cloudflare 1010), not the Cognexus app. "
+            "The API does not reject sign-up by User-Agent. If this persists, create an API key "
+            "in the browser (Account → API Keys) and set COGNEXUS_API_KEY, or ask your infra "
+            "admin to allow programmatic access to /api/auth/* (e.g. lower bot fight for that path "
+            "or use a WAF skip for known-good ASNs)."
         )
     return message
 

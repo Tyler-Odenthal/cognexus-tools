@@ -8,8 +8,7 @@ import pytest
 
 from cognexus import __version__
 from cognexus.cli import (
-    _CLI_USER_AGENT,
-    _dashboard_request_headers,
+    _request_headers_for_url,
     extract_cognexus_api_key_from_text,
     find_cognexus_api_key_in_env_files,
 )
@@ -40,10 +39,14 @@ def test_find_cognexus_api_key_in_env_files(tmp_path: Path, monkeypatch: pytest.
     assert path == (tmp_path / ".env").resolve()
 
 
-def test_dashboard_request_headers_avoids_python_urllib_fingerprint() -> None:
-    assert _CLI_USER_AGENT.startswith(f"cognexus-cli/{__version__}")
-    assert "Python-urllib" not in _CLI_USER_AGENT
-    h = _dashboard_request_headers()
-    assert h["Accept"] == "application/json"
+def test_request_headers_match_dashboard_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("COGNEXUS_CLI_USER_AGENT", raising=False)
+    url = "https://cognexuslabs.ai/api/auth/signup"
+    h = _request_headers_for_url(url)
+    assert h["Origin"] == "https://cognexuslabs.ai"
+    assert h["Referer"] == "https://cognexuslabs.ai/"
+    assert h["Sec-Fetch-Site"] == "same-origin"
+    assert "Mozilla" in h["User-Agent"]
+    assert "Chrome" in h["User-Agent"]
     assert "Python-urllib" not in h["User-Agent"]
-    assert h["User-Agent"].startswith(f"cognexus-cli/{__version__}")
+    assert h["X-Cognexus-Client"] == f"cognexus-cli/{__version__}"
